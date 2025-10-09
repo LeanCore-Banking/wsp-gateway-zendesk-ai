@@ -1,0 +1,284 @@
+{
+  "info": {
+    "name": "WhatsApp Twilio Webhook - Flujo Arreglo de Crédito",
+    "description": "Esquema para simular mensajes de WhatsApp desde Twilio para probar el flujo de arreglo de crédito",
+    "version": "1.0.0"
+  },
+  "scenarios": {
+    "credit_repair_flow": {
+      "description": "Flujo completo de arreglo de crédito - desde solicitud inicial hasta búsqueda de préstamo",
+      "steps": [
+        {
+          "step": 1,
+          "description": "Mensaje inicial solicitando arreglo de crédito",
+          "method": "POST",
+          "url": "{{base_url}}/webhook/twilio/whatsapp",
+          "headers": {
+            "Content-Type": "application/x-www-form-urlencoded"
+          },
+          "body": {
+            "MessageSid": "SM{{$randomUUID}}",
+            "AccountSid": "AC{{$randomAlphaNumeric}}",
+            "From": "whatsapp:+573001234567",
+            "To": "whatsapp:+57300XXXXXXX",
+            "Body": "Hola, necesito ayuda para arreglar mi crédito. Tengo problemas con mi préstamo y no sé qué hacer.",
+            "NumMedia": "0",
+            "ProfileName": "Juan Pérez",
+            "WaId": "573001234567",
+            "SmsStatus": "received",
+            "NumSegments": "1",
+            "MessageType": "text"
+          }
+        },
+        {
+          "step": 2,
+          "description": "Respuesta del usuario proporcionando ID parcial del préstamo",
+          "method": "POST",
+          "url": "{{base_url}}/webhook/twilio/whatsapp",
+          "headers": {
+            "Content-Type": "application/x-www-form-urlencoded"
+          },
+          "body": {
+            "MessageSid": "SM{{$randomUUID}}",
+            "AccountSid": "AC{{$randomAlphaNumeric}}",
+            "From": "whatsapp:+573001234567",
+            "To": "whatsapp:+57300XXXXXXX",
+            "Body": "Mi ID de préstamo es 577b35a6",
+            "NumMedia": "0",
+            "ProfileName": "Juan Pérez",
+            "WaId": "573001234567",
+            "SmsStatus": "received",
+            "NumSegments": "1",
+            "MessageType": "text"
+          }
+        },
+        {
+          "step": 3,
+          "description": "Usuario proporciona más información sobre su situación",
+          "method": "POST",
+          "url": "{{base_url}}/webhook/twilio/whatsapp",
+          "headers": {
+            "Content-Type": "application/x-www-form-urlencoded"
+          },
+          "body": {
+            "MessageSid": "SM{{$randomUUID}}",
+            "AccountSid": "AC{{$randomAlphaNumeric}}",
+            "From": "whatsapp:+573001234567",
+            "To": "whatsapp:+57300XXXXXXX",
+            "Body": "He tenido dificultades para pagar las cuotas debido a problemas económicos. ¿Pueden ayudarme a reestructurar mi deuda?",
+            "NumMedia": "0",
+            "ProfileName": "Juan Pérez",
+            "WaId": "573001234567",
+            "SmsStatus": "received",
+            "NumSegments": "1",
+            "MessageType": "text"
+          }
+        }
+      ]
+    },
+    "single_message_examples": {
+      "description": "Ejemplos de mensajes individuales para diferentes escenarios",
+      "examples": [
+        {
+          "name": "Solicitud inicial de arreglo de crédito",
+          "body": {
+            "MessageSid": "SM1234567890abcdef1234567890abcdef",
+            "AccountSid": "AC1234567890abcdef1234567890abcdef",
+            "From": "whatsapp:+573001234567",
+            "To": "whatsapp:+57300XXXXXXX",
+            "Body": "Buenos días, necesito arreglar mi crédito urgentemente",
+            "NumMedia": "0",
+            "ProfileName": "María García",
+            "WaId": "573001234567",
+            "SmsStatus": "received",
+            "NumSegments": "1",
+            "MessageType": "text"
+          }
+        },
+        {
+          "name": "Mensaje con ID de préstamo completo",
+          "body": {
+            "MessageSid": "SM2234567890abcdef1234567890abcdef",
+            "AccountSid": "AC1234567890abcdef1234567890abcdef",
+            "From": "whatsapp:+573009876543",
+            "To": "whatsapp:+57300XXXXXXX",
+            "Body": "Hola, mi número de préstamo es 577b35a6-1234-5678-9abc-def123456789 y necesito información sobre mi estado de cuenta",
+            "NumMedia": "0",
+            "ProfileName": "Carlos Rodríguez",
+            "WaId": "573009876543",
+            "SmsStatus": "received",
+            "NumSegments": "1",
+            "MessageType": "text"
+          }
+        },
+        {
+          "name": "Mensaje con ID parcial",
+          "body": {
+            "MessageSid": "SM3234567890abcdef1234567890abcdef",
+            "AccountSid": "AC1234567890abcdef1234567890abcdef",
+            "From": "whatsapp:+573005555555",
+            "To": "whatsapp:+57300XXXXXXX",
+            "Body": "Mi préstamo empieza con 577b y necesito ayuda",
+            "NumMedia": "0",
+            "ProfileName": "Ana López",
+            "WaId": "573005555555",
+            "SmsStatus": "received",
+            "NumSegments": "1",
+            "MessageType": "text"
+          }
+        },
+        {
+          "name": "Mensaje con imagen adjunta",
+          "body": {
+            "MessageSid": "SM4234567890abcdef1234567890abcdef",
+            "AccountSid": "AC1234567890abcdef1234567890abcdef",
+            "From": "whatsapp:+573007777777",
+            "To": "whatsapp:+57300XXXXXXX",
+            "Body": "Aquí está mi contrato de préstamo",
+            "NumMedia": "1",
+            "MediaUrl0": "https://api.twilio.com/2010-04-01/Accounts/AC.../Messages/SM.../Media/ME...",
+            "MediaContentType0": "image/jpeg",
+            "ProfileName": "Pedro Martínez",
+            "WaId": "573007777777",
+            "SmsStatus": "received",
+            "NumSegments": "1",
+            "MessageType": "text"
+          }
+        }
+      ]
+    }
+  },
+  "postman_collection": {
+    "info": {
+      "name": "WhatsApp Credit Repair Flow",
+      "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+      {
+        "key": "base_url",
+        "value": "http://localhost:3000",
+        "description": "URL base del servidor local"
+      }
+    ],
+    "item": [
+      {
+        "name": "1. Solicitud Inicial de Arreglo de Crédito",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ],
+          "body": {
+            "mode": "urlencoded",
+            "urlencoded": [
+              {"key": "MessageSid", "value": "SM{{$randomUUID}}", "type": "text"},
+              {"key": "AccountSid", "value": "AC{{$randomAlphaNumeric}}", "type": "text"},
+              {"key": "From", "value": "whatsapp:+573001234567", "type": "text"},
+              {"key": "To", "value": "whatsapp:+57300XXXXXXX", "type": "text"},
+              {"key": "Body", "value": "Hola, necesito ayuda para arreglar mi crédito. Tengo problemas con mi préstamo.", "type": "text"},
+              {"key": "NumMedia", "value": "0", "type": "text"},
+              {"key": "ProfileName", "value": "Juan Pérez", "type": "text"},
+              {"key": "WaId", "value": "573001234567", "type": "text"},
+              {"key": "SmsStatus", "value": "received", "type": "text"},
+              {"key": "NumSegments", "value": "1", "type": "text"},
+              {"key": "MessageType", "value": "text", "type": "text"}
+            ]
+          },
+          "url": {
+            "raw": "{{base_url}}/webhook/twilio/whatsapp",
+            "host": ["{{base_url}}"],
+            "path": ["webhook", "twilio", "whatsapp"]
+          }
+        }
+      },
+      {
+        "name": "2. Usuario Proporciona ID de Préstamo",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ],
+          "body": {
+            "mode": "urlencoded",
+            "urlencoded": [
+              {"key": "MessageSid", "value": "SM{{$randomUUID}}", "type": "text"},
+              {"key": "AccountSid", "value": "AC{{$randomAlphaNumeric}}", "type": "text"},
+              {"key": "From", "value": "whatsapp:+573001234567", "type": "text"},
+              {"key": "To", "value": "whatsapp:+57300XXXXXXX", "type": "text"},
+              {"key": "Body", "value": "Mi ID de préstamo es 577b35a6", "type": "text"},
+              {"key": "NumMedia", "value": "0", "type": "text"},
+              {"key": "ProfileName", "value": "Juan Pérez", "type": "text"},
+              {"key": "WaId", "value": "573001234567", "type": "text"},
+              {"key": "SmsStatus", "value": "received", "type": "text"},
+              {"key": "NumSegments", "value": "1", "type": "text"},
+              {"key": "MessageType", "value": "text", "type": "text"}
+            ]
+          },
+          "url": {
+            "raw": "{{base_url}}/webhook/twilio/whatsapp",
+            "host": ["{{base_url}}"],
+            "path": ["webhook", "twilio", "whatsapp"]
+          }
+        }
+      },
+      {
+        "name": "3. Solicitud de Reestructuración",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ],
+          "body": {
+            "mode": "urlencoded",
+            "urlencoded": [
+              {"key": "MessageSid", "value": "SM{{$randomUUID}}", "type": "text"},
+              {"key": "AccountSid", "value": "AC{{$randomAlphaNumeric}}", "type": "text"},
+              {"key": "From", "value": "whatsapp:+573001234567", "type": "text"},
+              {"key": "To", "value": "whatsapp:+57300XXXXXXX", "type": "text"},
+              {"key": "Body", "value": "He tenido dificultades para pagar. ¿Pueden ayudarme a reestructurar mi deuda?", "type": "text"},
+              {"key": "NumMedia", "value": "0", "type": "text"},
+              {"key": "ProfileName", "value": "Juan Pérez", "type": "text"},
+              {"key": "WaId", "value": "573001234567", "type": "text"},
+              {"key": "SmsStatus", "value": "received", "type": "text"},
+              {"key": "NumSegments", "value": "1", "type": "text"},
+              {"key": "MessageType", "value": "text", "type": "text"}
+            ]
+          },
+          "url": {
+            "raw": "{{base_url}}/webhook/twilio/whatsapp",
+            "host": ["{{base_url}}"],
+            "path": ["webhook", "twilio", "whatsapp"]
+          }
+        }
+      }
+    ]
+  },
+  "testing_instructions": {
+    "setup": [
+      "1. Asegúrate de que el servidor esté ejecutándose en el puerto 3000",
+      "2. Configura la variable de entorno base_url en Postman como http://localhost:3000",
+      "3. Importa la colección de Postman usando el JSON proporcionado"
+    ],
+    "execution": [
+      "1. Ejecuta las peticiones en orden secuencial para simular una conversación",
+      "2. Revisa los logs en la consola del servidor para seguir el flujo",
+      "3. Verifica que se ejecuten las funciones de búsqueda de préstamos",
+      "4. Confirma que se generen tickets en Zendesk cuando corresponda"
+    ],
+    "monitoring": [
+      "1. Observa los logs del webhook controller para ver los datos recibidos",
+      "2. Sigue los logs del message processor para ver el procesamiento",
+      "3. Revisa los logs del function calling service para ver las búsquedas de préstamos",
+      "4. Verifica las respuestas de WhatsApp en los logs de Twilio service"
+    ]
+  }
+}

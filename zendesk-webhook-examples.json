@@ -1,0 +1,220 @@
+{
+  "example_1_whatsapp_message": {
+    "description": "Ejemplo de webhook cuando un cliente envía un mensaje por WhatsApp a través del canal de Zendesk",
+    "payload": {
+      "id": "12345",
+      "type": "ticket_comment",
+      "ticket_id": "12345",
+      "message": "Hola, necesito ayuda con mi crédito 577b35a6",
+      "via": {
+        "channel": "whatsapp",
+        "source": {
+          "from": {
+            "phone": "+573001234567",
+            "name": "Juan Pérez"
+          },
+          "to": {
+            "phone": "+14155238886"
+          }
+        }
+      },
+      "author": {
+        "id": "67890",
+        "name": "Juan Pérez",
+        "role": "end_user"
+      },
+      "ticket": {
+        "id": "12345",
+        "subject": "WhatsApp conversation with Juan Pérez",
+        "status": "new",
+        "priority": "normal",
+        "custom_fields": [
+          {
+            "id": "whatsapp_number",
+            "value": "+573001234567"
+          }
+        ]
+      }
+    }
+  },
+  "example_2_complaint": {
+    "description": "Ejemplo de queja urgente",
+    "payload": {
+      "id": "12346",
+      "type": "ticket_comment",
+      "ticket_id": "12346",
+      "message": "¡Esto es inaceptable! Llevo 3 días esperando una respuesta y nadie me contesta. Quiero hablar con un supervisor AHORA.",
+      "via": {
+        "channel": "whatsapp",
+        "source": {
+          "from": {
+            "phone": "+573009876543",
+            "name": "María García"
+          }
+        }
+      },
+      "author": {
+        "id": "67891",
+        "name": "María García",
+        "role": "end_user"
+      },
+      "ticket": {
+        "id": "12346",
+        "subject": "WhatsApp conversation with María García",
+        "status": "new",
+        "priority": "normal"
+      }
+    }
+  },
+  "example_3_sales_inquiry": {
+    "description": "Ejemplo de consulta de ventas",
+    "payload": {
+      "id": "12347",
+      "type": "ticket_comment",
+      "ticket_id": "12347",
+      "message": "Buenas tardes, estoy interesado en solicitar un crédito. ¿Qué requisitos necesito y cuánto tiempo demora la aprobación?",
+      "via": {
+        "channel": "whatsapp",
+        "source": {
+          "from": {
+            "phone": "+573005551234",
+            "name": "Carlos Rodríguez"
+          }
+        }
+      },
+      "author": {
+        "id": "67892",
+        "name": "Carlos Rodríguez",
+        "role": "end_user"
+      },
+      "ticket": {
+        "id": "12347",
+        "subject": "WhatsApp conversation with Carlos Rodríguez",
+        "status": "new",
+        "priority": "normal"
+      }
+    }
+  },
+  "example_4_agent_response": {
+    "description": "Ejemplo de respuesta de agente (este debería ser ignorado por el sistema)",
+    "payload": {
+      "id": "12348",
+      "type": "ticket_comment",
+      "ticket_id": "12345",
+      "message": "Hola Juan, con gusto te ayudo. ¿Podrías proporcionarme más detalles sobre tu consulta?",
+      "via": {
+        "channel": "web"
+      },
+      "author": {
+        "id": "99999",
+        "name": "Agente de Soporte",
+        "role": "agent"
+      },
+      "ticket": {
+        "id": "12345",
+        "subject": "WhatsApp conversation with Juan Pérez",
+        "status": "open",
+        "priority": "normal"
+      }
+    }
+  },
+  "example_5_loan_issue": {
+    "description": "Ejemplo de problema con préstamo específico",
+    "payload": {
+      "id": "12349",
+      "type": "ticket_comment",
+      "ticket_id": "12349",
+      "message": "Buenos días, tengo un problema con mi crédito ID 577b35a6. Hice un pago hace 3 días pero todavía no se refleja en mis cuotas. ¿Pueden ayudarme?",
+      "via": {
+        "channel": "whatsapp",
+        "source": {
+          "from": {
+            "phone": "+573001112222",
+            "name": "Ana Martínez"
+          }
+        }
+      },
+      "author": {
+        "id": "67893",
+        "name": "Ana Martínez",
+        "role": "end_user"
+      },
+      "ticket": {
+        "id": "12349",
+        "subject": "WhatsApp conversation with Ana Martínez",
+        "status": "new",
+        "priority": "normal"
+      }
+    }
+  },
+  "example_6_appointment_request": {
+    "description": "Ejemplo de solicitud de cita",
+    "payload": {
+      "id": "12350",
+      "type": "ticket_comment",
+      "ticket_id": "12350",
+      "message": "Hola, quisiera agendar una cita para el próximo martes 15 de octubre a las 3pm para hablar sobre opciones de crédito. ¿Es posible?",
+      "via": {
+        "channel": "whatsapp",
+        "source": {
+          "from": {
+            "phone": "+573003334444",
+            "name": "Luis Gómez"
+          }
+        }
+      },
+      "author": {
+        "id": "67894",
+        "name": "Luis Gómez",
+        "role": "end_user"
+      },
+      "ticket": {
+        "id": "12350",
+        "subject": "WhatsApp conversation with Luis Gómez",
+        "status": "new",
+        "priority": "normal"
+      }
+    }
+  },
+  "example_7_partial_loan_id": {
+    "description": "Ejemplo con ID parcial de préstamo",
+    "payload": {
+      "id": "12351",
+      "type": "ticket_comment",
+      "ticket_id": "12351",
+      "message": "Mi crédito 577b35 tiene problemas con los pagos",
+      "via": {
+        "channel": "whatsapp",
+        "source": {
+          "from": {
+            "phone": "+573005556666",
+            "name": "Pedro Sánchez"
+          }
+        }
+      },
+      "author": {
+        "id": "67895",
+        "name": "Pedro Sánchez",
+        "role": "end_user"
+      },
+      "ticket": {
+        "id": "12351",
+        "subject": "WhatsApp conversation with Pedro Sánchez",
+        "status": "new",
+        "priority": "normal"
+      }
+    }
+  },
+  "testing_instructions": {
+    "description": "Cómo probar estos ejemplos",
+    "steps": [
+      "1. Iniciar el servidor en modo desarrollo: yarn start:dev",
+      "2. Usar curl o Postman para enviar los payloads",
+      "3. Observar los logs del servidor para ver el procesamiento completo",
+      "4. Verificar que las respuestas se generen correctamente"
+    ],
+    "curl_example": "curl -X POST http://localhost:3000/webhook/zendesk/whatsapp -H 'Content-Type: application/json' -d @zendesk-webhook-examples.json#example_1_whatsapp_message.payload"
+  }
+}
+
+
