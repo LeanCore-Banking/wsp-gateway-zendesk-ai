@@ -84,29 +84,122 @@ export class KpisController {
   }
 
   /**
-   * Forzar ejecución del cronjob de KPIs
-   * GET /kpis/force-generate
+   * Forzar ejecución del cronjob de KPIs semanales
+   * GET /kpis/force-weekly
    */
-  @Get('force-generate')
-  async forceGenerate(@Res() res: Response): Promise<void> {
-    this.logger.log('🔄 Forzando generación de KPIs...');
+  @Get('force-weekly')
+  async forceWeekly(@Res() res: Response): Promise<void> {
+    this.logger.log('🔄 Forzando generación de KPIs semanales...');
 
     try {
       await this.kpisService.generateWeeklyKPIs();
 
       res.status(HttpStatus.OK).json({
         success: true,
-        message: 'KPIs generados exitosamente',
+        message: 'KPIs semanales generados y enviados exitosamente',
         timestamp: new Date().toISOString(),
       });
 
-      this.logger.log('✅ Generación forzada de KPIs completada');
+      this.logger.log('✅ Generación forzada de KPIs semanales completada');
 
     } catch (error) {
-      this.logger.error('❌ Error en generación forzada:', error);
+      this.logger.error('❌ Error en generación forzada semanal:', error);
       res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
         success: false,
-        error: 'Error forzando generación de KPIs',
+        error: 'Error forzando generación de KPIs semanales',
+      });
+    }
+  }
+
+  /**
+   * Forzar ejecución del cronjob de KPIs mensuales
+   * GET /kpis/force-monthly
+   */
+  @Get('force-monthly')
+  async forceMonthly(@Res() res: Response): Promise<void> {
+    this.logger.log('🔄 Forzando generación de KPIs mensuales...');
+
+    try {
+      await this.kpisService.generateMonthlyKPIs();
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        message: 'KPIs mensuales generados y enviados exitosamente',
+        timestamp: new Date().toISOString(),
+      });
+
+      this.logger.log('✅ Generación forzada de KPIs mensuales completada');
+
+    } catch (error) {
+      this.logger.error('❌ Error en generación forzada mensual:', error);
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Error forzando generación de KPIs mensuales',
+      });
+    }
+  }
+
+  /**
+   * Generar KPIs para una fintech específica
+   * GET /kpis/fintech/:fintechName
+   */
+  @Get('fintech/:fintechName')
+  async generateKPIsForFintech(@Res() res: Response, fintechName: string): Promise<void> {
+    this.logger.log(`📊 Generando KPIs para fintech: ${fintechName}`);
+
+    try {
+      const result = await this.kpisService.generateKPIsForFintech(fintechName);
+
+      if (!result.success) {
+        res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+          success: false,
+          error: result.error || 'Error generando KPIs para la fintech',
+        });
+        return;
+      }
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        data: result.data,
+        fileName: result.fileName,
+        message: `KPIs generados exitosamente para ${fintechName}`,
+      });
+
+      this.logger.log(`✅ KPIs generados exitosamente para ${fintechName}`);
+
+    } catch (error) {
+      this.logger.error(`❌ Error generando KPIs para ${fintechName}:`, error);
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Error interno del servidor',
+      });
+    }
+  }
+
+  /**
+   * Enviar KPIs por email a todas las fintechs
+   * GET /kpis/send-emails
+   */
+  @Get('send-emails')
+  async sendEmails(@Res() res: Response): Promise<void> {
+    this.logger.log('📧 Enviando KPIs por email a todas las fintechs...');
+
+    try {
+      await this.kpisService.sendKPIsToAllFintechs();
+
+      res.status(HttpStatus.OK).json({
+        success: true,
+        message: 'KPIs enviados por email a todas las fintechs exitosamente',
+        timestamp: new Date().toISOString(),
+      });
+
+      this.logger.log('✅ Envío de emails completado');
+
+    } catch (error) {
+      this.logger.error('❌ Error enviando emails:', error);
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Error enviando KPIs por email',
       });
     }
   }
@@ -124,7 +217,10 @@ export class KpisController {
       endpoints: {
         generatePDF: 'GET /kpis/generate-pdf',
         getData: 'GET /kpis/data',
-        forceGenerate: 'GET /kpis/force-generate',
+        forceWeekly: 'GET /kpis/force-weekly',
+        forceMonthly: 'GET /kpis/force-monthly',
+        fintechSpecific: 'GET /kpis/fintech/:fintechName',
+        sendEmails: 'GET /kpis/send-emails',
         health: 'GET /kpis/health',
       },
     });

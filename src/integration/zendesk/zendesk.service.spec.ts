@@ -238,8 +238,8 @@ describe('ZendeskService', () => {
           tags: ['whatsapp'],
           custom_fields: [],
           requester_id: 67890,
-          created_at: '2024-01-01T00:00:00Z',
-          updated_at: '2024-01-01T01:00:00Z',
+          created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-01-01T01:00:00Z',
           description: 'Test description',
         },
       };
