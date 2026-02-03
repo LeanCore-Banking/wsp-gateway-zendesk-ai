@@ -21,8 +21,7 @@ async function testKPIs() {
     logger.log('✅ KPIs calculados exitosamente:');
     logger.log(`   - Tasa de aprobación: ${kpiData.tasaAprobacion.toFixed(2)}%`);
     logger.log(`   - Tiempo onboarding: ${kpiData.tiempoOnboarding} minutos`);
-    logger.log(`   - Tiempo desembolso: ${kpiData.tiempoPromedioDesembolso} días`);
-    logger.log(`   - Índice cartera sin errores: ${kpiData.indiceCarteraSinErrores}`);
+    logger.log(`   - Índice cartera sin errores: ${kpiData.indiceCarteraSinErrores.toFixed(2)}%`);
     logger.log(`   - Efectividad recaudo: ${kpiData.efectividadRecaudo}%`);
     logger.log(`   - Fecha generación: ${kpiData.fechaGeneracion.toISOString()}`);
     logger.log(`   - Período: ${kpiData.periodo.inicio.toLocaleDateString()} - ${kpiData.periodo.fin.toLocaleDateString()}`);

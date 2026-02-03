@@ -19,8 +19,7 @@ async function quickKPIsTest() {
     logger.log('✅ KPIs calculados:');
     logger.log(`   - Tasa aprobación: ${kpiData.tasaAprobacion.toFixed(2)}%`);
     logger.log(`   - Onboarding: ${kpiData.tiempoOnboarding} min`);
-    logger.log(`   - Desembolso: ${kpiData.tiempoPromedioDesembolso} días`);
-    logger.log(`   - Cartera sin errores: ${kpiData.indiceCarteraSinErrores}`);
+    logger.log(`   - Cartera sin errores: ${kpiData.indiceCarteraSinErrores.toFixed(2)}%`);
     logger.log(`   - Efectividad recaudo: ${kpiData.efectividadRecaudo}%`);
 
     // 2. Probar generación de PDF

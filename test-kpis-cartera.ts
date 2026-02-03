@@ -25,7 +25,6 @@ async function testIndiceCarteraSinErrores() {
     console.log('─'.repeat(60));
     console.log(`✓ Tasa de Aprobación:              ${kpiData.tasaAprobacion.toFixed(2)}%`);
     console.log(`✓ Tiempo de Onboarding:            ${kpiData.tiempoOnboarding} minutos`);
-    console.log(`✓ Tiempo Promedio de Desembolso:   ${kpiData.tiempoPromedioDesembolso} días`);
     console.log(`✓ Índice Cartera Sin Errores:      ${kpiData.indiceCarteraSinErrores.toFixed(2)}%`);
     console.log(`✓ Efectividad de Recaudo:          ${kpiData.efectividadRecaudo}%`);
     console.log('─'.repeat(60));

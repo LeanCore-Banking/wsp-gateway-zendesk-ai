@@ -2,8 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { MailerService } from '@nestjs-modules/mailer';
 import { MongoClientService } from '../database/services/mongo-client.service';
-import { KPIData, FinancialEntityStats, KPIGenerationResult, FintechEmailConfig, KPIGenerationResultByEntity } from './interfaces/kpi.interface';
+import { KPIData, FinancialEntityStats, KPIGenerationResult, FintechEmailConfig, KPIGenerationResultByEntity, KPISummary } from './interfaces/kpi.interface';
 import * as puppeteer from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class KpisService {
@@ -562,24 +564,8 @@ export class KpisService {
         }
       };
       
-      this.logger.log(`🔍 CONSULTA LEAD (Regular) - Entity: ${financialEntityId}`);
-      this.logger.log(`   📅 Últimos 7 días desde: ${sevenDaysAgo.toISOString().split('T')[0]}`);
-      this.logger.log(`   🔎 Query: ${JSON.stringify(query)}`);
-      
       const count = await collection.countDocuments(query);
-      
-      this.logger.log(`   ✅ Resultado: ${count} leads encontrados`);
-      
-      // Log adicional: obtener algunos documentos de ejemplo
-      const sampleDocs = await collection.find(query).limit(3).toArray();
-      if (sampleDocs.length > 0) {
-        this.logger.log(`   📋 Ejemplos de documentos:`);
-        sampleDocs.forEach((doc, index) => {
-          this.logger.log(`      ${index + 1}. ID: ${doc._id}, Ecosystem: ${doc.ecosystem}, Created: ${doc.created_at}`);
-        });
-      } else {
-        this.logger.log(`   📋 No se encontraron documentos de ejemplo`);
-      }
+      this.logger.log(`🔍 Leads encontrados para ${financialEntityId}: ${count}`);
 
       return count;
 
@@ -619,24 +605,8 @@ export class KpisService {
         }
       };
       
-      this.logger.log(`🔍 CONSULTA USER (Regular) - Entity: ${financialEntityId}`);
-      this.logger.log(`   📅 Últimos 7 días desde: ${sevenDaysAgo.toISOString().split('T')[0]}`);
-      this.logger.log(`   🔎 Query: ${JSON.stringify(query)}`);
-      
       const count = await collection.countDocuments(query);
-      
-      this.logger.log(`   ✅ Resultado: ${count} users encontrados`);
-      
-      // Log adicional: obtener algunos documentos de ejemplo
-      const sampleDocs = await collection.find(query).limit(3).toArray();
-      if (sampleDocs.length > 0) {
-        this.logger.log(`   📋 Ejemplos de documentos:`);
-        sampleDocs.forEach((doc, index) => {
-          this.logger.log(`      ${index + 1}. ID: ${doc._id}, Ecosystem: ${doc.ecosystem}, Created: ${doc.created_at}`);
-        });
-      } else {
-        this.logger.log(`   📋 No se encontraron documentos de ejemplo`);
-      }
+      this.logger.log(`🔍 Users encontrados para ${financialEntityId}: ${count}`);
 
       return count;
 
@@ -726,14 +696,27 @@ export class KpisService {
         return 50; // Valor de prueba
       }
 
+      // OPTIMIZACIÓN: Obtener todos los user_ids únicos de los loans
+      const uniqueUserIds = [...new Set(loans.map(l => l.user_id).filter(Boolean))];
+      this.logger.log(`   - IDs de usuarios únicos: ${uniqueUserIds.length}`);
+
+      // Obtener todos los usuarios necesarios en UNA SOLA consulta
+      const users = await userCollection.find({
+        _id: { $in: uniqueUserIds }
+      }).toArray();
+
+      // Crear un Map para lookups O(1) en memoria
+      const userMap = new Map(users.map(u => [u._id.toString(), u]));
+      this.logger.log(`   - Usuarios encontrados en BD: ${userMap.size}`);
+
       // Calcular diferencias de tiempo
       const tiempos: number[] = [];
       let procesados = 0;
 
       for (const loan of loans) {
         try {
-          // Buscar el usuario correspondiente
-          const user = await userCollection.findOne({ _id: loan.user_id });
+          // Lookup del usuario en memoria (O(1))
+          const user = userMap.get(loan.user_id?.toString());
 
           if (user && user.created_at && loan.disbursement_date) {
             const createdAt = new Date(user.created_at);
@@ -943,12 +926,26 @@ export class KpisService {
         return 50;
       }
 
+      // OPTIMIZACIÓN: Obtener todos los user_ids únicos de los loans
+      const uniqueUserIdsEntity = [...new Set(loans.map(l => l.user_id).filter(Boolean))];
+      this.logger.log(`   - IDs de usuarios únicos: ${uniqueUserIdsEntity.length}`);
+
+      // Obtener todos los usuarios necesarios en UNA SOLA consulta
+      const usersEntity = await userCollection.find({
+        _id: { $in: uniqueUserIdsEntity }
+      }).toArray();
+
+      // Crear un Map para lookups O(1) en memoria
+      const userMapEntity = new Map(usersEntity.map(u => [u._id.toString(), u]));
+      this.logger.log(`   - Usuarios encontrados en BD: ${userMapEntity.size}`);
+
       const tiempos: number[] = [];
       let procesados = 0;
 
       for (const loan of loans) {
         try {
-          const user = await userCollection.findOne({ _id: loan.user_id });
+          // Lookup del usuario en memoria (O(1))
+          const user = userMapEntity.get(loan.user_id?.toString());
 
           if (user && user.created_at && loan.disbursement_date) {
             const createdAt = new Date(user.created_at);
@@ -1479,7 +1476,8 @@ export class KpisService {
   async generateKPIsForFintechWithCustomPeriod(
     fintechName: string,
     fechaInicio: Date,
-    fechaFin: Date
+    fechaFin: Date,
+    erroresCarteraPersonalizados?: number
   ): Promise<KPIGenerationResult> {
     try {
       this.logger.log(`📊 Generando KPIs para ${fintechName} con período personalizado...`);
@@ -1507,7 +1505,7 @@ export class KpisService {
 
       // Calcular KPIs para esta fintech con período personalizado
       const tasaAprobacion = await this.calculateTasaAprobacionByEntityIdsWithPeriod(entityIds, fechaInicio, fechaFin);
-      const indiceCarteraSinErrores = await this.calculateIndiceCarteraSinErroresByEntityIdsWithPeriod(entityIds, fintechName, fechaInicio, fechaFin);
+      const indiceCarteraSinErrores = await this.calculateIndiceCarteraSinErroresByEntityIdsWithPeriod(entityIds, fintechName, fechaInicio, fechaFin, erroresCarteraPersonalizados);
       const tiempoOnboarding = await this.calculateTiempoOnboardingByEntityIdsWithPeriod(entityIds, fechaInicio, fechaFin);
 
       // KPIs mockeados
@@ -1548,6 +1546,268 @@ export class KpisService {
   }
 
   /**
+   * Genera KPIs para STOP-YOYO de los últimos 7 días
+   * @param erroresCartera Errores de cartera reportados (opcional)
+   */
+  async generateKPIsForStopYoyoWeekly(erroresCartera?: number): Promise<KPIGenerationResult> {
+    try {
+      this.logger.log(`📊 Generando KPIs para STOP-YOYO - ÚLTIMOS 7 DÍAS...`);
+
+      // Calcular fechas de los últimos 7 días en UTC
+      const ahora = new Date();
+      
+      // Fecha de fin: hoy a las 23:59:59.999 UTC
+      const fechaFin = new Date(Date.UTC(
+        ahora.getUTCFullYear(),
+        ahora.getUTCMonth(),
+        ahora.getUTCDate(),
+        23, 59, 59, 999
+      ));
+      
+      // Fecha de inicio: hace 7 días a las 00:00:00.000 UTC
+      const fechaInicio = new Date(Date.UTC(
+        ahora.getUTCFullYear(),
+        ahora.getUTCMonth(),
+        ahora.getUTCDate() - 7,
+        0, 0, 0, 0
+      ));
+
+      this.logger.log(`   - Período: ${fechaInicio.toISOString().split('T')[0]} a ${fechaFin.toISOString().split('T')[0]}`);
+
+      // Obtener los entity IDs específicos de STOP-YOYO
+      const entities = this.getFinancialEntities();
+      const stopYoyoEntities = entities.filter(e => e.grupo === 'STOP-YOYO');
+      const entityIds = stopYoyoEntities.map(e => e.id);
+
+      // Usar el método existente con las fechas calculadas y errores personalizados
+      const result = await this.generateKPIsForFintechWithCustomPeriod('STOP-YOYO', fechaInicio, fechaFin, erroresCartera);
+      
+      if (result.success && result.pdfBuffer && result.fileName) {
+        // Crear directorio para PDFs
+        const outputDir = 'pdfs-kpis';
+        if (!fs.existsSync(outputDir)) {
+          fs.mkdirSync(outputDir, { recursive: true });
+        }
+
+        // Nombre del archivo para KPIs semanales
+        const fileName = `leanCore-kpis-stop-yoyo-weekly-${fechaFin.toISOString().split('T')[0]}.pdf`;
+        const filePath = path.join(outputDir, fileName);
+
+        // Guardar PDF en el directorio
+        fs.writeFileSync(filePath, result.pdfBuffer);
+
+        // Generar resumen con datos detallados - IMPORTANTE: Pasar entityIds para filtrar solo STOP-YOYO
+        const summary: KPISummary = {
+          totalLeads: result.data ? await this.getTotalLeadsForPeriod(fechaInicio, fechaFin, entityIds) : 0,
+          totalUsers: result.data ? await this.getTotalUsersForPeriod(fechaInicio, fechaFin, entityIds) : 0,
+          totalSolicitudes: 0,
+          totalLoans: result.data ? await this.getTotalLoansForPeriod(fechaInicio, fechaFin, entityIds) : 0,
+          erroresCartera: erroresCartera || this.getErroresPorEntidad('STOP-YOYO'),
+          formulas: {
+            tasaAprobacion: '(Total Users / Total Solicitudes) × 100',
+            indiceCarteraSinErrores: '((Total Loans - Errores Cartera) / Total Loans) × 100',
+            tiempoOnboarding: 'Promedio de (disbursement_date - created_at) en minutos'
+          }
+        };
+
+        summary.totalSolicitudes = summary.totalLeads + summary.totalUsers;
+
+        return {
+          success: true,
+          data: result.data,
+          summary,
+          fileName,
+          filePath: path.resolve(filePath),
+        };
+      }
+
+      return result;
+
+    } catch (error) {
+      this.logger.error(`❌ Error generando KPIs para STOP-YOYO (últimos 7 días):`, error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Genera KPIs para STOP-YOYO con un rango de fechas personalizado
+   * @param fechaInicio Fecha de inicio (string en formato YYYY-MM-DD)
+   * @param fechaFin Fecha de fin (string en formato YYYY-MM-DD)
+   * @param erroresCartera Número de errores de cartera (opcional)
+   */
+  async generateKPIsForStopYoyoCustomRange(
+    fechaInicioStr: string, 
+    fechaFinStr: string, 
+    erroresCartera?: number
+  ): Promise<KPIGenerationResult> {
+    try {
+      // Validar y parsear fechas
+      const fechaInicio = new Date(`${fechaInicioStr}T00:00:00.000Z`);
+      const fechaFin = new Date(`${fechaFinStr}T23:59:59.999Z`);
+
+      // Validar que las fechas sean válidas
+      if (isNaN(fechaInicio.getTime()) || isNaN(fechaFin.getTime())) {
+        throw new Error('Las fechas proporcionadas no son válidas. Use formato YYYY-MM-DD');
+      }
+
+      // Validar que fechaInicio sea menor que fechaFin
+      if (fechaInicio > fechaFin) {
+        throw new Error('La fecha de inicio debe ser anterior a la fecha de fin');
+      }
+
+      this.logger.log(`📊 Generando KPIs para STOP-YOYO - Rango personalizado...`);
+      this.logger.log(`   - Período: ${fechaInicio.toISOString().split('T')[0]} a ${fechaFin.toISOString().split('T')[0]}`);
+
+      // Obtener los entity IDs específicos de STOP-YOYO
+      const entities = this.getFinancialEntities();
+      const stopYoyoEntities = entities.filter(e => e.grupo === 'STOP-YOYO');
+      const entityIds = stopYoyoEntities.map(e => e.id);
+
+      // Usar el método existente con las fechas calculadas y errores personalizados
+      const result = await this.generateKPIsForFintechWithCustomPeriod('STOP-YOYO', fechaInicio, fechaFin, erroresCartera);
+      
+      if (result.success && result.pdfBuffer && result.fileName) {
+        // Crear directorio para PDFs
+        const outputDir = 'pdfs-kpis';
+        if (!fs.existsSync(outputDir)) {
+          fs.mkdirSync(outputDir, { recursive: true });
+        }
+
+        // Nombre del archivo para KPIs con rango personalizado
+        const fileName = `leanCore-kpis-stop-yoyo-${fechaInicioStr}_${fechaFinStr}.pdf`;
+        const filePath = path.join(outputDir, fileName);
+
+        // Guardar PDF en el directorio
+        fs.writeFileSync(filePath, result.pdfBuffer);
+
+        // Generar resumen con datos detallados - IMPORTANTE: Pasar entityIds para filtrar solo STOP-YOYO
+        const summary: KPISummary = {
+          totalLeads: result.data ? await this.getTotalLeadsForPeriod(fechaInicio, fechaFin, entityIds) : 0,
+          totalUsers: result.data ? await this.getTotalUsersForPeriod(fechaInicio, fechaFin, entityIds) : 0,
+          totalSolicitudes: 0,
+          totalLoans: result.data ? await this.getTotalLoansForPeriod(fechaInicio, fechaFin, entityIds) : 0,
+          erroresCartera: erroresCartera || this.getErroresPorEntidad('STOP-YOYO'),
+          formulas: {
+            tasaAprobacion: '(Total Users / Total Solicitudes) × 100',
+            indiceCarteraSinErrores: '((Total Loans - Errores Cartera) / Total Loans) × 100',
+            tiempoOnboarding: 'Promedio de (disbursement_date - created_at) en minutos'
+          }
+        };
+
+        summary.totalSolicitudes = summary.totalLeads + summary.totalUsers;
+
+        return {
+          success: true,
+          data: result.data,
+          summary,
+          fileName,
+          filePath: path.resolve(filePath),
+        };
+      }
+
+      return result;
+
+    } catch (error) {
+      this.logger.error(`❌ Error generando KPIs para STOP-YOYO con rango personalizado:`, error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Genera KPIs para STOP-YOYO de un mes específico
+   * @param year Año (ej: 2025)
+   * @param month Mes (1-12, donde 1=enero, 2=febrero, etc.)
+   */
+  async generateKPIsForStopYoyoByMonth(year: number, month: number, erroresCartera?: number): Promise<KPIGenerationResult> {
+    try {
+      // Validar parámetros
+      if (month < 1 || month > 12) {
+        throw new Error('El mes debe estar entre 1 y 12');
+      }
+      if (year < 2020 || year > 2030) {
+        throw new Error('El año debe estar entre 2020 y 2030');
+      }
+
+      // Crear fechas del mes especificado en UTC
+      const fechaInicio = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+      
+      // Para obtener el último día del mes, usamos el día 0 del mes siguiente
+      const fechaFin = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+
+      const monthNames = [
+        'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+        'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+      ];
+
+      this.logger.log(`📊 Generando KPIs para STOP-YOYO - ${monthNames[month - 1].toUpperCase()} ${year}...`);
+      this.logger.log(`   - Período: ${fechaInicio.toISOString().split('T')[0]} a ${fechaFin.toISOString().split('T')[0]}`);
+
+      // Obtener los entity IDs específicos de STOP-YOYO
+      const entities = this.getFinancialEntities();
+      const stopYoyoEntities = entities.filter(e => e.grupo === 'STOP-YOYO');
+      const entityIds = stopYoyoEntities.map(e => e.id);
+
+      // Usar el método existente con las fechas calculadas y errores personalizados
+      const result = await this.generateKPIsForFintechWithCustomPeriod('STOP-YOYO', fechaInicio, fechaFin, erroresCartera);
+      
+      if (result.success && result.pdfBuffer && result.fileName) {
+        // Crear directorio para PDFs
+        const outputDir = 'pdfs-kpis';
+        if (!fs.existsSync(outputDir)) {
+          fs.mkdirSync(outputDir, { recursive: true });
+        }
+
+        // Actualizar el nombre del archivo para incluir el mes
+        const monthName = monthNames[month - 1];
+        const fileName = `leanCore-kpis-stop-yoyo-${monthName}-${year}.pdf`;
+        const filePath = path.join(outputDir, fileName);
+
+        // Guardar PDF en el directorio
+        fs.writeFileSync(filePath, result.pdfBuffer);
+
+        // Generar resumen con datos detallados - IMPORTANTE: Pasar entityIds para filtrar solo STOP-YOYO
+        const summary: KPISummary = {
+          totalLeads: result.data ? await this.getTotalLeadsForPeriod(fechaInicio, fechaFin, entityIds) : 0,
+          totalUsers: result.data ? await this.getTotalUsersForPeriod(fechaInicio, fechaFin, entityIds) : 0,
+          totalSolicitudes: 0,
+          totalLoans: result.data ? await this.getTotalLoansForPeriod(fechaInicio, fechaFin, entityIds) : 0,
+          erroresCartera: erroresCartera || this.getErroresPorEntidad('STOP-YOYO'),
+          formulas: {
+            tasaAprobacion: '(Total Users / Total Solicitudes) × 100',
+            indiceCarteraSinErrores: '((Total Loans - Errores Cartera) / Total Loans) × 100',
+            tiempoOnboarding: 'Promedio de (disbursement_date - created_at) en minutos'
+          }
+        };
+
+        summary.totalSolicitudes = summary.totalLeads + summary.totalUsers;
+
+        return {
+          success: true,
+          data: result.data,
+          summary,
+          fileName,
+          filePath: path.resolve(filePath),
+        };
+      }
+
+      return result;
+
+    } catch (error) {
+      this.logger.error(`❌ Error generando KPIs para STOP-YOYO del mes ${month}/${year}:`, error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
    * Calcula tasa de aprobación para un conjunto específico de entity IDs con período personalizado
    */
   private async calculateTasaAprobacionByEntityIdsWithPeriod(
@@ -1572,8 +1832,8 @@ export class KpisService {
       }
 
       if (totalLeads === 0 && totalUsers === 0) {
-        this.logger.warn('⚠️ No se encontraron datos reales, usando datos mock');
-        return Math.random() * 20 + 70; // Mock: 70-90%
+        this.logger.warn('⚠️ No se encontraron datos reales para el período especificado');
+        return 0; // Sin datos reales
       }
 
       const totalSolicitudesGeneral = totalLeads + totalUsers;
@@ -1587,7 +1847,7 @@ export class KpisService {
 
     } catch (error) {
       this.logger.error('❌ Error calculando tasa de aprobación por entidades con período personalizado:', error);
-      return Math.random() * 20 + 70; // Mock: 70-90%
+      return 0; // Sin datos reales debido a error
     }
   }
 
@@ -1605,26 +1865,10 @@ export class KpisService {
       
       if (!db) {
         this.logger.warn('⚠️ MongoDB no disponible para contar leads con período personalizado');
-        
-        // Log de la consulta mock
-        const query = {
-          ecosystem: financialEntityId,
-          created_at: {
-            $gte: fechaInicio.toISOString(),
-            $lte: fechaFin.toISOString()
-          }
-        };
-        
-        this.logger.log(`🚫 DATOS SIMULADOS - CONSULTA LEAD - Entity: ${financialEntityId}`);
+        this.logger.log(`❌ SIN DATOS - CONSULTA LEAD - Entity: ${financialEntityId}`);
         this.logger.log(`   📅 Período: ${fechaInicio.toISOString().split('T')[0]} a ${fechaFin.toISOString().split('T')[0]}`);
-        this.logger.log(`   🔎 Query que se ejecutaría: ${JSON.stringify(query)}`);
-        
-        const mockCount = Math.floor(Math.random() * 50) + 10; // Mock: 10-60 leads
-        
-        this.logger.log(`   🚫 RESULTADO SIMULADO: ${mockCount} leads encontrados`);
-        this.logger.log(`   ⚠️  IMPORTANTE: Estos son datos ficticios para testing`);
-        
-        return mockCount;
+        this.logger.log(`   ❌ RESULTADO: 0 leads (MongoDB no disponible)`);
+        return 0; // Sin datos reales
       }
 
       this.logger.debug(`📅 Filtro de fecha personalizado: desde ${fechaInicio.toISOString()} hasta ${fechaFin.toISOString()}`);
@@ -1640,30 +1884,14 @@ export class KpisService {
         }
       };
       
-      this.logger.log(`✅ DATOS REALES - CONSULTA LEAD - Entity: ${financialEntityId}`);
-      this.logger.log(`   📅 Período: ${fechaInicio.toISOString().split('T')[0]} a ${fechaFin.toISOString().split('T')[0]}`);
-      this.logger.log(`   🔎 Query: ${JSON.stringify(query)}`);
-      
       const count = await collection.countDocuments(query);
-      
-      this.logger.log(`   ✅ RESULTADO REAL: ${count} leads encontrados`);
-      
-      // Log adicional: obtener algunos documentos de ejemplo
-      const sampleDocs = await collection.find(query).limit(3).toArray();
-      if (sampleDocs.length > 0) {
-        this.logger.log(`   📋 Ejemplos de documentos:`);
-        sampleDocs.forEach((doc, index) => {
-          this.logger.log(`      ${index + 1}. ID: ${doc._id}, Ecosystem: ${doc.ecosystem}, Created: ${doc.created_at}`);
-        });
-      } else {
-        this.logger.log(`   📋 No se encontraron documentos de ejemplo`);
-      }
+      this.logger.log(`🔍 Leads encontrados para ${financialEntityId} (${fechaInicio.toISOString().split('T')[0]} a ${fechaFin.toISOString().split('T')[0]}): ${count}`);
 
       return count;
 
     } catch (error) {
       this.logger.error(`❌ Error contando leads para ${financialEntityId} con período personalizado:`, error);
-      return Math.floor(Math.random() * 50) + 10; // Mock: 10-60 leads
+      return 0; // Sin datos reales debido a error
     }
   }
 
@@ -1681,26 +1909,10 @@ export class KpisService {
       
       if (!db) {
         this.logger.warn('⚠️ MongoDB no disponible para contar users con período personalizado');
-        
-        // Log de la consulta mock
-        const query = {
-          ecosystem: financialEntityId,
-          created_at: {
-            $gte: fechaInicio.toISOString(),
-            $lte: fechaFin.toISOString()
-          }
-        };
-        
-        this.logger.log(`🚫 DATOS SIMULADOS - CONSULTA USER - Entity: ${financialEntityId}`);
+        this.logger.log(`❌ SIN DATOS - CONSULTA USER - Entity: ${financialEntityId}`);
         this.logger.log(`   📅 Período: ${fechaInicio.toISOString().split('T')[0]} a ${fechaFin.toISOString().split('T')[0]}`);
-        this.logger.log(`   🔎 Query que se ejecutaría: ${JSON.stringify(query)}`);
-        
-        const mockCount = Math.floor(Math.random() * 30) + 5; // Mock: 5-35 users
-        
-        this.logger.log(`   🚫 RESULTADO SIMULADO: ${mockCount} users encontrados`);
-        this.logger.log(`   ⚠️  IMPORTANTE: Estos son datos ficticios para testing`);
-        
-        return mockCount;
+        this.logger.log(`   ❌ RESULTADO: 0 users (MongoDB no disponible)`);
+        return 0; // Sin datos reales
       }
 
       this.logger.debug(`📅 Filtro de fecha personalizado: desde ${fechaInicio.toISOString()} hasta ${fechaFin.toISOString()}`);
@@ -1716,30 +1928,14 @@ export class KpisService {
         }
       };
       
-      this.logger.log(`✅ DATOS REALES - CONSULTA USER - Entity: ${financialEntityId}`);
-      this.logger.log(`   📅 Período: ${fechaInicio.toISOString().split('T')[0]} a ${fechaFin.toISOString().split('T')[0]}`);
-      this.logger.log(`   🔎 Query: ${JSON.stringify(query)}`);
-      
       const count = await collection.countDocuments(query);
-      
-      this.logger.log(`   ✅ RESULTADO REAL: ${count} users encontrados`);
-      
-      // Log adicional: obtener algunos documentos de ejemplo
-      const sampleDocs = await collection.find(query).limit(3).toArray();
-      if (sampleDocs.length > 0) {
-        this.logger.log(`   📋 Ejemplos de documentos:`);
-        sampleDocs.forEach((doc, index) => {
-          this.logger.log(`      ${index + 1}. ID: ${doc._id}, Ecosystem: ${doc.ecosystem}, Created: ${doc.created_at}`);
-        });
-      } else {
-        this.logger.log(`   📋 No se encontraron documentos de ejemplo`);
-      }
+      this.logger.log(`🔍 Users encontrados para ${financialEntityId} (${fechaInicio.toISOString().split('T')[0]} a ${fechaFin.toISOString().split('T')[0]}): ${count}`);
 
       return count;
 
     } catch (error) {
       this.logger.error(`❌ Error contando users para ${financialEntityId} con período personalizado:`, error);
-      return Math.floor(Math.random() * 30) + 5; // Mock: 5-35 users
+      return 0; // Sin datos reales debido a error
     }
   }
 
@@ -1750,7 +1946,8 @@ export class KpisService {
     entityIds: string[], 
     entityGroup: string, 
     fechaInicio: Date, 
-    fechaFin: Date
+    fechaFin: Date,
+    erroresPersonalizados?: number
   ): Promise<number> {
     try {
       this.logger.log('🔍 Calculando índice de cartera para entidades específicas con período personalizado...');
@@ -1758,19 +1955,27 @@ export class KpisService {
       const totalLoans = await this.countLoansByEntityIdsWithPeriod(entityIds, fechaInicio, fechaFin);
       this.logger.log(`   - Total de créditos: ${totalLoans}`);
 
-      // Obtener errores específicos para esta entidad (ajustados proporcionalmente)
-      const erroresPorGrupo: { [key: string]: number } = {
-        'STOP-YOYO': 56,
-        'Credilider': 0,
-        'Presti': 3,
-        'Socoda': 5,
-      };
-
-      const erroresSemanales = erroresPorGrupo[entityGroup] || 0;
-      // Ajustar errores proporcionalmente al período (30 días = ~4.3 semanas)
-      const erroresAjustados = Math.floor(erroresSemanales * 4.3);
+      // Usar errores personalizados si se proporcionaron, sino usar los por defecto
+      let erroresAjustados: number;
       
-      this.logger.log(`   - Errores ajustados para período de 30 días (${entityGroup}): ${erroresAjustados}`);
+      if (erroresPersonalizados !== undefined) {
+        erroresAjustados = erroresPersonalizados;
+        this.logger.log(`   - Errores personalizados para ${entityGroup}: ${erroresAjustados}`);
+      } else {
+        // Obtener errores específicos para esta entidad (ajustados proporcionalmente)
+        const erroresPorGrupo: { [key: string]: number } = {
+          'STOP-YOYO': 56,
+          'Credilider': 0,
+          'Presti': 3,
+          'Socoda': 5,
+        };
+
+        const erroresSemanales = erroresPorGrupo[entityGroup] || 0;
+        // Ajustar errores proporcionalmente al período (30 días = ~4.3 semanas)
+        erroresAjustados = Math.floor(erroresSemanales * 4.3);
+        
+        this.logger.log(`   - Errores ajustados para período de 30 días (${entityGroup}): ${erroresAjustados}`);
+      }
 
       if (totalLoans === 0) {
         this.logger.warn('⚠️ No se encontraron loans');
@@ -1787,7 +1992,7 @@ export class KpisService {
 
     } catch (error) {
       this.logger.error('❌ Error calculando índice por entidades con período personalizado:', error);
-      return Math.random() * 5 + 95; // Mock: 95-100%
+      return 0; // Sin datos reales debido a error
     }
   }
 
@@ -1805,28 +2010,10 @@ export class KpisService {
       
       if (!db) {
         this.logger.warn('⚠️ MongoDB no disponible para contar loans con período personalizado');
-        
-        // Log de la consulta mock
-        this.logger.log(`🚫 DATOS SIMULADOS - CONSULTA LOAN - Entity IDs: ${entityIds.join(', ')}`);
+        this.logger.log(`❌ SIN DATOS - CONSULTA LOAN - Entity IDs: ${entityIds.join(', ')}`);
         this.logger.log(`   📅 Período: ${fechaInicio.toISOString().split('T')[0]} a ${fechaFin.toISOString().split('T')[0]}`);
-        this.logger.log(`   👥 User IDs simulados: ~50 usuarios`);
-        
-        const loanQuery = {
-          disbursement_date: {
-            $gte: fechaInicio.toISOString(),
-            $lte: fechaFin.toISOString()
-          },
-          user_id: { $in: ["mock_user_id_1", "mock_user_id_2", "..."] }
-        };
-        
-        this.logger.log(`   🔎 Query que se ejecutaría: ${JSON.stringify(loanQuery)}`);
-        
-        const mockCount = Math.floor(Math.random() * 100) + 50; // Mock: 50-150 loans
-        
-        this.logger.log(`   🚫 RESULTADO SIMULADO: ${mockCount} loans encontrados`);
-        this.logger.log(`   ⚠️  IMPORTANTE: Estos son datos ficticios para testing`);
-        
-        return mockCount;
+        this.logger.log(`   ❌ RESULTADO: 0 loans (MongoDB no disponible)`);
+        return 0; // Sin datos reales
       }
 
       const userCollection = db.collection('user');
@@ -1843,7 +2030,8 @@ export class KpisService {
       const userIds = users.map(u => u._id);
 
       if (userIds.length === 0) {
-        return Math.floor(Math.random() * 100) + 50; // Mock: 50-150 loans
+        this.logger.log(`   ❌ RESULTADO: 0 loans (no se encontraron usuarios para las entidades)`);
+        return 0; // Sin datos reales
       }
 
       // Log de la consulta de loans
@@ -1855,32 +2043,15 @@ export class KpisService {
         user_id: { $in: userIds }
       };
       
-      this.logger.log(`✅ DATOS REALES - CONSULTA LOAN - Entity IDs: ${entityIds.join(', ')}`);
-      this.logger.log(`   📅 Período: ${fechaInicio.toISOString().split('T')[0]} a ${fechaFin.toISOString().split('T')[0]}`);
-      this.logger.log(`   👥 User IDs encontrados: ${userIds.length}`);
-      this.logger.log(`   🔎 Query: ${JSON.stringify(loanQuery)}`);
-      
       // Contar loans con período personalizado
       const count = await loanCollection.countDocuments(loanQuery);
-      
-      this.logger.log(`   ✅ RESULTADO REAL: ${count} loans encontrados`);
-      
-      // Log adicional: obtener algunos documentos de ejemplo
-      const sampleLoans = await loanCollection.find(loanQuery).limit(3).toArray();
-      if (sampleLoans.length > 0) {
-        this.logger.log(`   📋 Ejemplos de loans:`);
-        sampleLoans.forEach((loan, index) => {
-          this.logger.log(`      ${index + 1}. ID: ${loan._id}, User ID: ${loan.user_id}, Disbursement: ${loan.disbursement_date}`);
-        });
-      } else {
-        this.logger.log(`   📋 No se encontraron loans de ejemplo`);
-      }
+      this.logger.log(`🔍 Loans encontrados para ${entityIds.length} entidades (${fechaInicio.toISOString().split('T')[0]} a ${fechaFin.toISOString().split('T')[0]}): ${count}`);
 
       return count;
 
     } catch (error) {
       this.logger.error('❌ Error contando loans por entidades con período personalizado:', error);
-      return Math.floor(Math.random() * 100) + 50; // Mock: 50-150 loans
+      return 0; // Sin datos reales debido a error
     }
   }
 
@@ -1900,32 +2071,10 @@ export class KpisService {
       
       if (!db) {
         this.logger.warn('⚠️ MongoDB no disponible para calcular tiempo de onboarding con período personalizado');
-        
-        // Log de la consulta mock
-        this.logger.log(`🚫 DATOS SIMULADOS - CONSULTA USER (Onboarding) - Entity IDs: ${entityIds.join(', ')}`);
-        this.logger.log(`   🔎 Query que se ejecutaría: {"ecosystem":{"$in":["${entityIds.join('","')}"]}}`);
-        this.logger.log(`   🚫 Usuarios simulados: ~50 usuarios`);
-        
-        this.logger.log(`🚫 DATOS SIMULADOS - CONSULTA LOAN (Onboarding) - User IDs: ~50`);
+        this.logger.log(`❌ SIN DATOS - CONSULTA USER (Onboarding) - Entity IDs: ${entityIds.join(', ')}`);
         this.logger.log(`   📅 Período: ${fechaInicio.toISOString().split('T')[0]} a ${fechaFin.toISOString().split('T')[0]}`);
-        
-        const onboardingLoanQuery = {
-          disbursement_date: {
-            $gte: fechaInicio.toISOString(),
-            $lte: fechaFin.toISOString()
-          },
-          user_id: { $in: ["mock_user_id_1", "mock_user_id_2", "..."] }
-        };
-        
-        this.logger.log(`   🔎 Query que se ejecutaría: ${JSON.stringify(onboardingLoanQuery)}`);
-        this.logger.log(`   🚫 Loans simulados: ~30 loans`);
-        this.logger.log(`   📋 Cálculo de tiempo de onboarding simulado`);
-        
-        const mockTime = Math.floor(Math.random() * 20) + 30; // Mock: 30-50 minutos
-        this.logger.log(`   🚫 RESULTADO SIMULADO: ${mockTime} minutos promedio`);
-        this.logger.log(`   ⚠️  IMPORTANTE: Estos son datos ficticios para testing`);
-        
-        return mockTime;
+        this.logger.log(`   ❌ RESULTADO: 0 minutos (MongoDB no disponible)`);
+        return 0; // Sin datos reales
       }
 
       const loanCollection = db.collection('loan');
@@ -1936,9 +2085,6 @@ export class KpisService {
         ecosystem: { $in: entityIds }
       };
       
-      this.logger.log(`✅ DATOS REALES - CONSULTA USER (Onboarding) - Entity IDs: ${entityIds.join(', ')}`);
-      this.logger.log(`   🔎 Query: ${JSON.stringify(userQuery)}`);
-      
       // Obtener usuarios de las entidades especificadas
       const users = await userCollection
         .find(userQuery)
@@ -1946,18 +2092,12 @@ export class KpisService {
         .toArray();
 
       const userIds = users.map(u => u._id);
-
-      this.logger.log(`   ✅ Usuarios encontrados (REAL): ${users.length}`);
-      if (users.length > 0) {
-        this.logger.log(`   📋 Ejemplos de usuarios:`);
-        users.slice(0, 3).forEach((user, index) => {
-          this.logger.log(`      ${index + 1}. ID: ${user._id}, Ecosystem: ${user.ecosystem}, Created: ${user.created_at}`);
-        });
-      }
+      this.logger.log(`🔍 Usuarios encontrados para ${entityIds.length} entidades: ${users.length}`);
 
       if (userIds.length === 0) {
         this.logger.warn('⚠️ No se encontraron usuarios para estas entidades con período personalizado');
-        return Math.floor(Math.random() * 20) + 30; // Mock: 30-50 minutos
+        this.logger.log(`   ❌ RESULTADO: 0 minutos (no se encontraron usuarios)`);
+        return 0; // Sin datos reales
       }
 
       // Log de consulta de loans para onboarding
@@ -1969,35 +2109,39 @@ export class KpisService {
         user_id: { $in: userIds }
       };
       
-      this.logger.log(`✅ DATOS REALES - CONSULTA LOAN (Onboarding) - User IDs: ${userIds.length}`);
-      this.logger.log(`   📅 Período: ${fechaInicio.toISOString().split('T')[0]} a ${fechaFin.toISOString().split('T')[0]}`);
-      this.logger.log(`   🔎 Query: ${JSON.stringify(onboardingLoanQuery)}`);
-
       // Obtener loans del período personalizado para estos usuarios
       const loans = await loanCollection
         .find(onboardingLoanQuery)
         .toArray();
 
-      this.logger.log(`   ✅ Loans encontrados (REAL): ${loans.length}`);
-      
-      if (loans.length > 0) {
-        this.logger.log(`   📋 Ejemplos de loans para onboarding:`);
-        loans.slice(0, 3).forEach((loan, index) => {
-          this.logger.log(`      ${index + 1}. ID: ${loan._id}, User ID: ${loan.user_id}, Disbursement: ${loan.disbursement_date}`);
-        });
-      }
+      this.logger.log(`🔍 Loans encontrados para onboarding (${fechaInicio.toISOString().split('T')[0]} a ${fechaFin.toISOString().split('T')[0]}): ${loans.length}`);
 
       if (loans.length === 0) {
         this.logger.warn('⚠️ No se encontraron loans para período personalizado');
-        return Math.floor(Math.random() * 20) + 30; // Mock: 30-50 minutos
+        this.logger.log(`   ❌ RESULTADO: 0 minutos (no se encontraron loans)`);
+        return 0; // Sin datos reales
       }
+
+      // OPTIMIZACIÓN: Obtener todos los user_ids únicos de los loans
+      const uniqueUserIdsCustom = [...new Set(loans.map(l => l.user_id).filter(Boolean))];
+      this.logger.log(`   - IDs de usuarios únicos: ${uniqueUserIdsCustom.length}`);
+
+      // Obtener todos los usuarios necesarios en UNA SOLA consulta
+      const usersCustomPeriod = await userCollection.find({
+        _id: { $in: uniqueUserIdsCustom }
+      }).toArray();
+
+      // Crear un Map para lookups O(1) en memoria
+      const userMapCustom = new Map(usersCustomPeriod.map(u => [u._id.toString(), u]));
+      this.logger.log(`   - Usuarios encontrados en BD: ${userMapCustom.size}`);
 
       const tiempos: number[] = [];
       let procesados = 0;
 
       for (const loan of loans) {
         try {
-          const user = await userCollection.findOne({ _id: loan.user_id });
+          // Lookup del usuario en memoria (O(1))
+          const user = userMapCustom.get(loan.user_id?.toString());
 
           if (user && user.created_at && loan.disbursement_date) {
             const createdAt = new Date(user.created_at);
@@ -2020,7 +2164,8 @@ export class KpisService {
 
       if (tiempos.length === 0) {
         this.logger.warn('⚠️ No se pudieron calcular tiempos válidos para período personalizado');
-        return Math.floor(Math.random() * 20) + 30; // Mock: 30-50 minutos
+        this.logger.log(`   ❌ RESULTADO: 0 minutos (no se pudieron calcular tiempos válidos)`);
+        return 0; // Sin datos reales
       }
 
       const promedioMinutos = tiempos.reduce((sum, t) => sum + t, 0) / tiempos.length;
@@ -2031,7 +2176,283 @@ export class KpisService {
 
     } catch (error) {
       this.logger.error('❌ Error calculando tiempo de onboarding por entidades con período personalizado:', error);
-      return Math.floor(Math.random() * 20) + 30; // Mock: 30-50 minutos
+      return 0; // Sin datos reales debido a error
+    }
+  }
+
+  /**
+   * Obtiene el total de leads para un período específico
+   * @param fechaInicio Fecha de inicio del período
+   * @param fechaFin Fecha de fin del período
+   * @param entityIds Lista opcional de entity IDs específicos. Si no se proporciona, usa todas las entidades.
+   */
+  private async getTotalLeadsForPeriod(fechaInicio: Date, fechaFin: Date, entityIds?: string[]): Promise<number> {
+    try {
+      // Si se proporcionan entityIds específicos, usarlos; sino, usar todas las entidades
+      const entitiesToCount = entityIds || this.getFinancialEntities().map(e => e.id);
+      let totalLeads = 0;
+
+      for (const entityId of entitiesToCount) {
+        const leadsCount = await this.countLeadsByFinancialEntityWithPeriod(entityId, fechaInicio, fechaFin);
+        totalLeads += leadsCount;
+      }
+
+      return totalLeads;
+    } catch (error) {
+      this.logger.error('❌ Error obteniendo total de leads:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Obtiene el total de users para un período específico
+   * @param fechaInicio Fecha de inicio del período
+   * @param fechaFin Fecha de fin del período
+   * @param entityIds Lista opcional de entity IDs específicos. Si no se proporciona, usa todas las entidades.
+   */
+  private async getTotalUsersForPeriod(fechaInicio: Date, fechaFin: Date, entityIds?: string[]): Promise<number> {
+    try {
+      // Si se proporcionan entityIds específicos, usarlos; sino, usar todas las entidades
+      const entitiesToCount = entityIds || this.getFinancialEntities().map(e => e.id);
+      let totalUsers = 0;
+
+      for (const entityId of entitiesToCount) {
+        const usersCount = await this.countUsersByFinancialEntityWithPeriod(entityId, fechaInicio, fechaFin);
+        totalUsers += usersCount;
+      }
+
+      return totalUsers;
+    } catch (error) {
+      this.logger.error('❌ Error obteniendo total de users:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Obtiene el total de loans para un período específico
+   * @param fechaInicio Fecha de inicio del período
+   * @param fechaFin Fecha de fin del período
+   * @param entityIds Lista opcional de entity IDs específicos. Si no se proporciona, cuenta todos los loans.
+   */
+  private async getTotalLoansForPeriod(fechaInicio: Date, fechaFin: Date, entityIds?: string[]): Promise<number> {
+    try {
+      await this.mongoClientService.ensureConnection();
+      const db = this.mongoClientService['db'];
+      
+      if (!db) {
+        return 0;
+      }
+
+      const loanCollection = db.collection('loan');
+      
+      // Construir el filtro base
+      const filter: any = {
+        disbursement_date: {
+          $gte: fechaInicio.toISOString(),
+          $lte: fechaFin.toISOString()
+        }
+      };
+
+      // Si se proporcionan entityIds específicos, agregar filtro
+      if (entityIds && entityIds.length > 0) {
+        filter.financial_entity_id = { $in: entityIds };
+      }
+
+      const count = await loanCollection.countDocuments(filter);
+
+      return count;
+    } catch (error) {
+      this.logger.error('❌ Error obteniendo total de loans:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Genera KPI de noviembre: errores vs créditos administrados
+   * Créditos administrados = loans DESEMBOLSADOS en noviembre con status "arrear" o "active"
+   */
+  async generateKPINoviembre2024(): Promise<{
+    success: boolean;
+    data?: {
+      mes: string;
+      periodo: { inicio: string; fin: string };
+      entidadesFinancieras: string[];
+      errores: number;
+      creditosAdministrados: number;
+      creditosSinErrores: number;
+      indiceCarteraSinErrores: number;
+      totalLoans: number;
+      porcentajeAdministrados: number;
+      desglose: {
+        active: number;
+        arrear: number;
+      };
+    };
+    error?: string;
+  }> {
+    try {
+      this.logger.log('📊 Generando KPI de Noviembre 2025: Errores vs Créditos Administrados...');
+
+      // Definir período de noviembre 2025
+      const fechaInicio = new Date('2025-11-01T00:00:00.000Z');
+      const fechaFin = new Date('2025-11-30T23:59:59.999Z');
+
+      this.logger.log(`   - Período: ${fechaInicio.toISOString().split('T')[0]} a ${fechaFin.toISOString().split('T')[0]}`);
+      this.logger.log(`   - Rango ISO: ${fechaInicio.toISOString()} a ${fechaFin.toISOString()}`);
+
+      await this.mongoClientService.ensureConnection();
+      const db = this.mongoClientService['db'];
+      
+      if (!db) {
+        throw new Error('MongoDB no disponible');
+      }
+
+      const loanCollection = db.collection('loan');
+
+      // IDs de entidades financieras a filtrar (STOP-YOYO)
+      const financialEntityIds = [
+        '713bf1d6-9e5d-4b48-b211-7bc5ec736130', // YOYO
+        'f0f6b280-b6f8-4b2c-ba3c-0ead0c15590e'  // STOP
+      ];
+
+      this.logger.log(`   🏢 Filtrando por entidades financieras: STOP-YOYO`);
+      this.logger.log(`      IDs: ${financialEntityIds.join(', ')}`);
+
+      // DIAGNÓSTICO: Obtener un sample de disbursement_date para verificar formato
+      this.logger.log('\n🔍 DIAGNÓSTICO - Revisando formato de disbursement_date:');
+      const sampleLoans = await loanCollection.find({
+        disbursement_date: { $exists: true }
+      }).limit(5).toArray();
+      
+      if (sampleLoans.length > 0) {
+        this.logger.log('   Ejemplos de disbursement_date encontrados:');
+        sampleLoans.forEach((loan, idx) => {
+          this.logger.log(`   ${idx + 1}. ${loan.disbursement_date} (tipo: ${typeof loan.disbursement_date})`);
+        });
+      }
+
+      // DIAGNÓSTICO: Contar todos los loans con disbursement_date
+      const totalConFecha = await loanCollection.countDocuments({
+        disbursement_date: { $exists: true, $ne: null }
+      });
+      this.logger.log(`   Total loans con disbursement_date: ${totalConFecha}\n`);
+
+      // Filtro base por fecha de desembolso (noviembre 2025) y entidades financieras
+      const filtroFecha = {
+        disbursement_date: {
+          $gte: fechaInicio.toISOString(),
+          $lte: fechaFin.toISOString()
+        },
+        financial_entity_id: { $in: financialEntityIds }
+      };
+
+      this.logger.log('🔍 Ejecutando consulta con filtro:');
+      this.logger.log(JSON.stringify(filtroFecha, null, 2));
+
+      // Contar total de loans desembolsados en noviembre
+      const totalLoans = await loanCollection.countDocuments(filtroFecha);
+      this.logger.log(`\n   ✅ Total loans desembolsados en Nov 2025: ${totalLoans}`);
+
+      // Si encuentra pocos, intentar con regex para validar
+      if (totalLoans < 100) {
+        this.logger.log('\n   ⚠️  Pocos loans encontrados, probando con regex...');
+        const totalConRegex = await loanCollection.countDocuments({
+          disbursement_date: { $regex: /^2025-11-/ },
+          financial_entity_id: { $in: financialEntityIds }
+        });
+        this.logger.log(`   Con regex /^2025-11-/ y STOP-YOYO: ${totalConRegex} loans`);
+      }
+
+      // Obtener samples de los loans encontrados
+      const samplesEncontrados = await loanCollection.find(filtroFecha).limit(3).toArray();
+      if (samplesEncontrados.length > 0) {
+        this.logger.log('\n   📋 Muestras de loans encontrados en noviembre:');
+        samplesEncontrados.forEach((loan, idx) => {
+          this.logger.log(`   ${idx + 1}. ID: ${loan._id}, Date: ${loan.disbursement_date}, Status: ${loan.status || 'sin status'}`);
+        });
+      }
+
+      // Contar por status
+      this.logger.log('\n   📊 Contando por status:');
+      
+      const creditosActive = await loanCollection.countDocuments({
+        ...filtroFecha,
+        status: 'active'
+      });
+      this.logger.log(`   - Status 'active': ${creditosActive}`);
+
+      const creditosArrear = await loanCollection.countDocuments({
+        ...filtroFecha,
+        status: 'arrear'
+      });
+      this.logger.log(`   - Status 'arrear': ${creditosArrear}`);
+
+      // Verificar qué otros status hay
+      const otrosStatus = await loanCollection.aggregate([
+        { $match: filtroFecha },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+        { $sort: { count: -1 } }
+      ]).toArray();
+      
+      if (otrosStatus.length > 0) {
+        this.logger.log('\n   📊 Distribución completa de status en Nov 2025 (STOP-YOYO):');
+        otrosStatus.forEach(stat => {
+          this.logger.log(`   - Status '${stat._id || 'null'}': ${stat.count}`);
+        });
+      }
+
+      const creditosAdministrados = creditosActive + creditosArrear;
+      this.logger.log(`\n   ✅ Créditos administrados STOP-YOYO (active + arrear): ${creditosAdministrados}`);
+
+      // Número de errores de cartera
+      const errores = 170;
+
+      // Calcular créditos sin errores
+      const creditosSinErrores = Math.max(0, creditosAdministrados - errores);
+
+      // Calcular índice de cartera sin errores
+      const indiceCarteraSinErrores = creditosAdministrados > 0 
+        ? (creditosSinErrores / creditosAdministrados) * 100 
+        : 100;
+
+      // Calcular porcentaje de créditos administrados
+      const porcentajeAdministrados = totalLoans > 0 
+        ? (creditosAdministrados / totalLoans) * 100 
+        : 0;
+
+      this.logger.log(`   - Err>ores reportados: ${errores}`);
+      this.logger.log(`   - Créditos sin errores: ${creditosSinErrores}`);
+      this.logger.log(`   - Índice de cartera sin errores: ${indiceCarteraSinErrores.toFixed(2)}%`);
+      this.logger.log(`   - Porcentaje administrados: ${porcentajeAdministrados.toFixed(2)}%\n`);
+
+      return {
+        success: true,
+        data: {
+          mes: 'Noviembre 2025',
+          periodo: {
+            inicio: fechaInicio.toISOString().split('T')[0],
+            fin: fechaFin.toISOString().split('T')[0],
+          },
+          entidadesFinancieras: ['STOP', 'YOYO'],
+          errores,
+          creditosAdministrados,
+          creditosSinErrores,
+          indiceCarteraSinErrores: parseFloat(indiceCarteraSinErrores.toFixed(2)),
+          totalLoans,
+          porcentajeAdministrados: parseFloat(porcentajeAdministrados.toFixed(2)),
+          desglose: {
+            active: creditosActive,
+            arrear: creditosArrear,
+          },
+        },
+      };
+
+    } catch (error) {
+      this.logger.error('❌ Error generando KPI de Noviembre:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
     }
   }
 }

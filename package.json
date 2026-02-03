@@ -31,6 +31,7 @@
     "test:kpis:email": "ts-node test-kpis-email.ts",
     "test:kpis:octubre": "ts-node test-kpis-octubre.ts",
     "test:kpis:stop-yoyo-7dias": "ts-node test-kpis-stop-yoyo-7dias.ts",
+    "test:kpis:stop-yoyo-mes": "ts-node test-kpis-stop-yoyo-mes.ts",
     "test:zendesk:full": "ts-node test-zendesk-manual.ts",
     "verify:zendesk": "ts-node verify-zendesk-config.ts"
   },

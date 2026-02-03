@@ -23,12 +23,27 @@ export interface KPIDataByEntity {
   [entityName: string]: KPIData;
 }
 
+export interface KPISummary {
+  totalLeads: number;
+  totalUsers: number;
+  totalSolicitudes: number;
+  totalLoans: number;
+  erroresCartera: number;
+  formulas: {
+    tasaAprobacion: string;
+    indiceCarteraSinErrores: string;
+    tiempoOnboarding: string;
+  };
+}
+
 export interface KPIGenerationResult {
   success: boolean;
   data?: KPIData;
+  summary?: KPISummary;
   error?: string;
   pdfBuffer?: Buffer;
   fileName?: string;
+  filePath?: string;
 }
 
 export interface FintechEmailConfig {
