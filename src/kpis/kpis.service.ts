@@ -2420,7 +2420,7 @@ export class KpisService {
         ? (creditosAdministrados / totalLoans) * 100 
         : 0;
 
-      this.logger.log(`   - Err>ores reportados: ${errores}`);
+      this.logger.log(`   - Errores reportados: ${errores}`);
       this.logger.log(`   - Créditos sin errores: ${creditosSinErrores}`);
       this.logger.log(`   - Índice de cartera sin errores: ${indiceCarteraSinErrores.toFixed(2)}%`);
       this.logger.log(`   - Porcentaje administrados: ${porcentajeAdministrados.toFixed(2)}%\n`);
