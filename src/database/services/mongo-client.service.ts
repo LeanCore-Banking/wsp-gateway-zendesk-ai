@@ -34,6 +34,8 @@ export class MongoClientService {
       this.client = new MongoClient(mongoUri, {
         serverSelectionTimeoutMS: 5000,
         connectTimeoutMS: 5000,
+        // Identifies this service in Atlas Query Insights (overrides any ?appName= in the URI)
+        appName: 'wsp-gateway-zendesk-ai',
       });
       
       this.logger.debug('   Intentando establecer conexión...');
